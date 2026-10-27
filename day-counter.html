@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="打卡日曆">
+<title>打卡日曆</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+  /* Layout: one centered column. A large running total on top, the month grid below, a quiet save-status line last. */
+  :root {
+    --bg: #f6f3fb;
+    --surface: #ffffff;
+    --fg: #241d35;
+    --muted: #6f6587;
+    --line: #e1dbef;
+    --accent: #7459b8;
+    --accent-fg: #ffffff;
+    --accent-soft: #ece6f8;
+    --font-display: "Bricolage Grotesque", "Noto Sans TC", system-ui, sans-serif;
+    --font-body: "Noto Sans TC", system-ui, -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141120;
+      --surface: #1c1830;
+      --fg: #ece8f6;
+      --muted: #9d94b5;
+      --line: #2f2947;
+      --accent: #b69cf0;
+      --accent-fg: #1a1030;
+      --accent-soft: #2a2342;
+      color-scheme: dark;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.5;
+    padding-block: max(24px, env(safe-area-inset-top, 0px)) max(40px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .app { max-width: 460px; margin-inline: auto; display: flex; flex-direction: column; gap: 20px; }
+
+  .total { display: flex; flex-direction: column; gap: 6px; }
+  .total .label { color: var(--muted); font-size: 14px; letter-spacing: 0.06em; }
+  .total .number {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 76px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .total .number small { font-family: var(--font-body); font-size: 20px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+  .sub { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .sub b { color: var(--fg); font-weight: 700; }
+
+  .cal { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
+  .cal-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .cal-head h1 { flex: 1; margin: 0; font-size: 17px; font-weight: 700; text-wrap: balance; }
+  .btn {
+    appearance: none; -webkit-appearance: none; border: 1px solid var(--line); background: transparent; color: var(--fg);
+    font: inherit; font-size: 14px; height: 36px; min-width: 36px; padding: 0 12px; border-radius: 10px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .btn:hover { background: var(--accent-soft); }
+  .btn:focus-visible, .day:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+  .dow { text-align: center; font-size: 12px; color: var(--muted); padding-bottom: 4px; letter-spacing: 0.04em; }
+  .day {
+    appearance: none; -webkit-appearance: none; font: inherit; color: var(--fg);
+    aspect-ratio: 1; width: 100%; min-width: 0;
+    border: 1px solid var(--line); background: transparent; border-radius: 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    font-size: 15px; font-variant-numeric: tabular-nums; cursor: pointer; padding: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .day svg { width: 14px; height: 14px; display: none; }
+  .day:hover { background: var(--accent-soft); }
+  .day.today { border-color: var(--accent); border-width: 2px; font-weight: 700; }
+  .day.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 700; }
+  .day.on svg { display: block; }
+  .day.future { opacity: 0.35; cursor: default; background: transparent; }
+  .day.future:hover { background: transparent; }
+  .blank { aspect-ratio: 1; }
+
+  .tools { display: flex; gap: 8px; }
+  .tools .btn { flex: 1; }
+  .status { color: var(--muted); font-size: 13px; text-align: center; }
+  .status.warn { color: var(--fg); font-weight: 500; }
+  @media (prefers-reduced-motion: no-preference) {
+    .day { transition: background-color 0.12s, color 0.12s; }
+  }
+</style>
+</head>
+<body>
+<main class="app">
+  <section class="total" aria-live="polite">
+    <div class="label">累計打卡</div>
+    <div class="number"><span id="total">0</span><small>天</small></div>
+    <div class="sub">
+      <span>本月 <b id="month">0</b> 天</span>
+      <span>連續 <b id="streak">0</b> 天</span>
+      <span>最長連續 <b id="best">0</b> 天</span>
+    </div>
+  </section>
+
+  <section class="cal" aria-label="日曆">
+    <div class="cal-head">
+      <h1 id="title"></h1>
+      <button class="btn" id="today" type="button">今天</button>
+      <button class="btn" id="prev" type="button" aria-label="上個月">‹</button>
+      <button class="btn" id="next" type="button" aria-label="下個月">›</button>
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <div class="tools">
+    <button class="btn" id="export" type="button">匯出備份</button>
+    <button class="btn" id="import" type="button">匯入備份</button>
+    <input id="file" type="file" accept=".json,application/json" hidden>
+  </div>
+
+  <div class="status" id="status">點選日期打勾，每個勾算 1 天，勾選後自動儲存</div>
+</main>
+
+<script>
+(function () {
+  var LS = "day-counter-v1";
+  var pad = function (n) { return String(n).padStart(2, "0"); };
+  var keyOf = function (y, m, d) { return y + "-" + pad(m + 1) + "-" + pad(d); };
+  var numOf = function (k) { var p = k.split("-"); return Date.UTC(+p[0], +p[1] - 1, +p[2]) / 86400000; };
+  var now = new Date();
+  var todayKey = keyOf(now.getFullYear(), now.getMonth(), now.getDate());
+  var view = { y: now.getFullYear(), m: now.getMonth() };
+  var days = {};
+  var storageOk = true;
+
+  var el = function (id) { return document.getElementById(id); };
+  var CHECK = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8"/></svg>';
+
+  function setStatus(t, warn) {
+    var s = el("status");
+    s.textContent = t;
+    s.className = "status" + (warn ? " warn" : "");
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(LS, JSON.stringify(days));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  try {
+    var raw = localStorage.getItem(LS);
+    var saved = raw ? JSON.parse(raw) : {};
+    if (saved && typeof saved === "object") days = saved;
+  } catch (e) {}
+
+  // Check that this browser actually lets the page keep data.
+  try {
+    localStorage.setItem(LS + "-test", "1");
+    localStorage.removeItem(LS + "-test");
+  } catch (e) {
+    storageOk = false;
+    setStatus("這個瀏覽器不允許儲存網站資料，勾選無法保留。請關閉無痕模式或允許網站資料。", true);
+  }
+
+  // Ask the browser not to clear this page's data when space is low.
+  try {
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+  } catch (e) {}
+
+  function stats() {
+    var keys = Object.keys(days).filter(function (k) { return days[k]; });
+    var set = {};
+    keys.forEach(function (k) { set[numOf(k)] = true; });
+    var nums = Object.keys(set).map(Number).sort(function (a, b) { return a - b; });
+    var best = 0, run = 0, prev = null;
+    nums.forEach(function (n) {
+      run = prev !== null && n === prev + 1 ? run + 1 : 1;
+      if (run > best) best = run;
+      prev = n;
+    });
+    var t = numOf(todayKey);
+    if (!set[t]) t -= 1;
+    var streak = 0;
+    while (set[t]) { streak++; t--; }
+    var prefix = view.y + "-" + pad(view.m + 1) + "-";
+    var inMonth = keys.filter(function (k) { return k.indexOf(prefix) === 0; }).length;
+    return { total: keys.length, month: inMonth, streak: streak, best: best };
+  }
+
+  function render(focusKey) {
+    var s = stats();
+    el("total").textContent = s.total;
+    el("month").textContent = s.month;
+    el("streak").textContent = s.streak;
+    el("best").textContent = s.best;
+    el("title").textContent = view.y + " 年 " + (view.m + 1) + " 月";
+
+    var first = new Date(view.y, view.m, 1).getDay();
+    var count = new Date(view.y, view.m + 1, 0).getDate();
+    var html = "日一二三四五六".split("").map(function (c) { return '<div class="dow">' + c + "</div>"; }).join("");
+    for (var i = 0; i < first; i++) html += '<div class="blank"></div>';
+    for (var d = 1; d <= count; d++) {
+      var k = keyOf(view.y, view.m, d);
+      var on = !!days[k];
+      var future = k > todayKey;
+      var cls = "day" + (on ? " on" : "") + (k === todayKey ? " today" : "") + (future ? " future" : "");
+      html += '<button type="button" class="' + cls + '" data-k="' + k + '"' +
+        (future ? " disabled" : "") +
+        ' aria-pressed="' + on + '" aria-label="' + (view.m + 1) + " 月 " + d + " 日" + (on ? "，已打勾" : "") + '">' +
+        "<span>" + d + "</span>" + CHECK + "</button>";
+    }
+    el("grid").innerHTML = html;
+    if (focusKey) {
+      var b = el("grid").querySelector('[data-k="' + focusKey + '"]');
+      if (b) b.focus();
+    }
+  }
+
+  el("grid").addEventListener("click", function (ev) {
+    var b = ev.target.closest("[data-k]");
+    if (!b || b.disabled) return;
+    var k = b.getAttribute("data-k");
+    if (k > todayKey) return;
+    if (days[k]) delete days[k]; else days[k] = true;
+    render(k);
+    // Save right away on every tap, so closing the page cannot lose it.
+    if (save()) {
+      if (storageOk) setStatus("已自動儲存");
+    } else {
+      storageOk = false;
+      setStatus("儲存失敗，這個瀏覽器不允許儲存網站資料。", true);
+    }
+  });
+  el("prev").addEventListener("click", function () {
+    view.m--; if (view.m < 0) { view.m = 11; view.y--; } render();
+  });
+  el("next").addEventListener("click", function () {
+    view.m++; if (view.m > 11) { view.m = 0; view.y++; } render();
+  });
+  el("today").addEventListener("click", function () {
+    view = { y: now.getFullYear(), m: now.getMonth() }; render();
+  });
+
+  // Backup: export all checked days to a file, import them on another phone.
+  el("export").addEventListener("click", function () {
+    var keys = Object.keys(days).filter(function (k) { return days[k]; }).sort();
+    var blob = new Blob([JSON.stringify({ app: "day-counter", version: 1, days: keys }, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "day-counter-backup-" + todayKey + ".json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    setStatus("已匯出 " + keys.length + " 天的備份檔");
+  });
+
+  el("import").addEventListener("click", function () { el("file").click(); });
+
+  el("file").addEventListener("change", function () {
+    var f = el("file").files && el("file").files[0];
+    if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var data = JSON.parse(String(reader.result));
+        var list = Array.isArray(data) ? data : Array.isArray(data.days) ? data.days : Object.keys(data.days || {}).filter(function (k) { return data.days[k]; });
+        var valid = list.filter(function (k) { return typeof k === "string" && /^\d{4}-\d{2}-\d{2}$/.test(k); });
+        if (!valid.length) { setStatus("這個檔案裡沒有找到打卡日期", true); return; }
+        var added = 0;
+        valid.forEach(function (k) { if (!days[k]) { days[k] = true; added++; } });
+        render();
+        if (save()) setStatus("已匯入 " + valid.length + " 天，新增 " + added + " 天，並已儲存");
+        else setStatus("匯入成功，但這個瀏覽器不允許儲存網站資料。", true);
+      } catch (e) {
+        setStatus("無法讀取這個檔案，請選擇之前匯出的備份檔", true);
+      }
+      el("file").value = "";
+    };
+    reader.onerror = function () { setStatus("讀取檔案失敗", true); };
+    reader.readAsText(f);
+  });
+
+  // Safety net: save again when the page is hidden or closed.
+  document.addEventListener("visibilitychange", function () { if (document.hidden) save(); });
+  window.addEventListener("pagehide", save);
+
+  render();
+})();
+</script>
+</body>
+</html>
